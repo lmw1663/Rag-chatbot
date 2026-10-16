@@ -44,6 +44,9 @@ supabase/.branches/
 # drafts
 drafts/
 
+# 개인 공부 노트
+docs/study/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
