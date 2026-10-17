@@ -1,5 +1,7 @@
 // 매뉴얼 마크다운을 헤딩 기준으로 잘라 청크로 만든다.
-// - 첫 번째 H1은 문서 제목으로 쓰고, H1~H3가 나올 때마다 새 섹션을 시작한다. H4 이하는 본문으로 취급한다.
+// - 맨 앞의 frontmatter(--- 블록)는 본문에서 떼어 내고 title, category를 읽는다.
+// - 첫 번째 H1은 제목 헤딩으로 쓰고(섹션을 만들지 않음), H1~H3가 나올 때마다 새 섹션을 시작한다. H4 이하는 본문으로 취급한다.
+// - 문서 제목은 frontmatter title → 첫 H1 순서로 정한다.
 // - 섹션 본문이 maxChars를 넘으면 문단 → 줄 → 글자 순으로 나눈다.
 // - 청크 본문 앞에 "문서 제목 > 헤딩 경로"를 붙여 임베딩에 문맥이 들어가게 한다.
 // 같은 입력이면 항상 같은 결과를 낸다(재인제스트 시 chunk_index 안정성).
@@ -13,7 +15,8 @@ export type Chunk = {
 };
 
 export type ChunkedDocument = {
-  title: string | null; // 첫 번째 H1. 없으면 null (인제스트에서 파일명으로 대체)
+  title: string | null; // frontmatter title → 첫 H1. 둘 다 없으면 null (인제스트에서 파일명으로 대체)
+  category: string | null; // frontmatter category. 없으면 null
   chunks: Chunk[];
 };
 
@@ -21,6 +24,9 @@ type Section = { heading: string | null; lines: string[] };
 
 const HEADING_PATTERN = /^(#{1,3})\s+(.+?)\s*#*\s*$/;
 const CODE_FENCE_PATTERN = /^\s*(```|~~~)/;
+// 문서 맨 앞의 "---\n...\n---" 블록. 내용이 빈 블록도 허용한다.
+const FRONTMATTER_PATTERN = /^---\n([\s\S]*?)\n?---[ \t]*(?:\n|$)/;
+const FRONTMATTER_LINE_PATTERN = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/;
 
 export function chunkMarkdown(
   markdown: string,
@@ -30,7 +36,11 @@ export function chunkMarkdown(
     throw new Error(`maxChars는 1 이상의 정수여야 합니다: ${maxChars}`);
   }
 
-  const { title, sections } = splitSections(markdown);
+  const normalized = markdown.replace(/\r\n?/g, "\n");
+  const { frontmatter, body: markdownBody } = splitFrontmatter(normalized);
+  const { h1, sections } = splitSections(markdownBody);
+  const title = frontmatter.title || h1;
+  const category = frontmatter.category || null;
 
   const chunks: Chunk[] = [];
   for (const section of sections) {
@@ -47,14 +57,29 @@ export function chunkMarkdown(
     }
   }
 
-  return { title, chunks };
+  return { title, category, chunks };
+}
+
+// 맨 앞의 frontmatter를 떼어 내고 "key: value" 줄만 읽는다. 중첩·목록 같은 YAML 문법은 지원하지 않는다.
+// 값을 감싼 따옴표('...', "...")는 벗긴다. frontmatter가 없으면 본문을 그대로 돌려준다.
+function splitFrontmatter(markdown: string): { frontmatter: Record<string, string>; body: string } {
+  const match = FRONTMATTER_PATTERN.exec(markdown);
+  if (!match) return { frontmatter: {}, body: markdown };
+
+  const frontmatter: Record<string, string> = {};
+  for (const line of match[1].split("\n")) {
+    const pair = FRONTMATTER_LINE_PATTERN.exec(line.trim());
+    if (!pair) continue;
+    frontmatter[pair[1]] = pair[2].trim().replace(/^(["'])(.*)\1$/, "$2").trim();
+  }
+  return { frontmatter, body: markdown.slice(match[0].length) };
 }
 
 // 줄 단위로 훑으며 헤딩을 만날 때마다 섹션을 나눈다. 코드 블록 안의 '#'은 헤딩으로 보지 않는다.
-function splitSections(markdown: string): { title: string | null; sections: Section[] } {
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+function splitSections(markdown: string): { h1: string | null; sections: Section[] } {
+  const lines = markdown.split("\n");
 
-  let title: string | null = null;
+  let h1: string | null = null;
   const headingStack: { level: number; text: string }[] = [];
   const sections: Section[] = [{ heading: null, lines: [] }];
   let inCodeBlock = false;
@@ -71,8 +96,8 @@ function splitSections(markdown: string): { title: string | null; sections: Sect
     const level = match[1].length;
     const text = match[2];
 
-    if (level === 1 && title === null) {
-      title = text;
+    if (level === 1 && h1 === null) {
+      h1 = text;
       continue;
     }
 
@@ -84,7 +109,7 @@ function splitSections(markdown: string): { title: string | null; sections: Sect
     sections.push({ heading: headingStack.map((h) => h.text).join(" > "), lines: [] });
   }
 
-  return { title, sections };
+  return { h1, sections };
 }
 
 // 본문을 maxChars 이하 조각으로 나눈다. 문단(빈 줄) → 줄 → 글자 순으로 더 잘게 나눈다.

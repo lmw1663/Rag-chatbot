@@ -148,6 +148,63 @@ describe("chunkMarkdown: 결정성", () => {
   });
 
   it("빈 문서는 청크가 없다", () => {
-    expect(chunkMarkdown("")).toEqual({ title: null, chunks: [] });
+    expect(chunkMarkdown("")).toEqual({ title: null, category: null, chunks: [] });
+  });
+});
+
+describe("chunkMarkdown: frontmatter", () => {
+  it("frontmatter의 title, category를 읽고, frontmatter 자체는 청크에 넣지 않는다", () => {
+    const md = ["---", "title: 튀김기 기름 관리", "category: 기기", "---", "# 튀김기 기름 관리", "", "## 교체 순서", "전원을 끈다."].join("\n");
+
+    expect(chunkMarkdown(md)).toEqual({
+      title: "튀김기 기름 관리",
+      category: "기기",
+      chunks: [{ chunkIndex: 0, heading: "교체 순서", content: "튀김기 기름 관리 > 교체 순서\n전원을 끈다." }],
+    });
+  });
+
+  it("frontmatter title이 H1보다 우선하고, H1은 섹션을 만들지 않는다", () => {
+    const md = ["---", "title: 메타 제목", "---", "# 본문 제목", "## 섹션", "내용."].join("\n");
+
+    const { title, chunks } = chunkMarkdown(md);
+
+    expect(title).toBe("메타 제목");
+    expect(chunks.map((c) => c.content)).toEqual(["메타 제목 > 섹션\n내용."]);
+  });
+
+  it("frontmatter에 title이 없으면 H1을 쓰고, category가 없으면 null이다", () => {
+    const md = ["---", "author: 크루", "---", "# 본문 제목", "## 섹션", "내용."].join("\n");
+
+    const { title, category } = chunkMarkdown(md);
+
+    expect(title).toBe("본문 제목");
+    expect(category).toBeNull();
+  });
+
+  it("값을 감싼 따옴표는 벗기고, 빈 값은 없는 것으로 본다", () => {
+    const md = ["---", 'title: "따옴표 제목"', "category:", "---", "## 섹션", "내용."].join("\n");
+
+    const { title, category } = chunkMarkdown(md);
+
+    expect(title).toBe("따옴표 제목");
+    expect(category).toBeNull();
+  });
+
+  it("문서 맨 앞이 아닌 '---'(구분선)는 frontmatter로 보지 않는다", () => {
+    const md = ["# 문서", "## 섹션", "위", "---", "category: 기기", "---", "아래"].join("\n");
+
+    const { category, chunks } = chunkMarkdown(md);
+
+    expect(category).toBeNull();
+    expect(bodyOf(chunks[0].content)).toBe("위\n---\ncategory: 기기\n---\n아래");
+  });
+
+  it("CRLF 줄바꿈의 frontmatter도 읽는다", () => {
+    const md = ["---", "title: 제목", "category: 위생", "---", "## 섹션", "내용."].join("\r\n");
+
+    const { title, category, chunks } = chunkMarkdown(md);
+
+    expect([title, category]).toEqual(["제목", "위생"]);
+    expect(chunks).toHaveLength(1);
   });
 });

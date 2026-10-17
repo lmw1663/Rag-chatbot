@@ -103,9 +103,10 @@ flowchart TD
 - 개발 서버: `npm run dev`
 - 프로덕션 빌드: `npm run build`
 - 린트: `npm run lint`
-- 전체 테스트: `npm test` (Vitest 4. Node 20에서 Vitest 5는 설치되지 않는다)
+- Node 22 이상 (`package.json`의 `engines`). supabase-js 2.110+가 Node 22를 요구한다.
+- 전체 테스트: `npm test` (Vitest 4)
 - 단일 테스트: `npx vitest run lib/chunk-markdown.test.ts`, 이름으로 거르기: `npx vitest run -t "코드 블록"`
-- 인제스트: `TODO`
+- 인제스트: `npm run ingest` (바뀐 문서만), `npm run ingest -- --force` (청커를 바꿨을 때 전체 재임베딩). 매뉴얼은 frontmatter에 `title`, `category`를 적는다.
 - 평가: `TODO`
 - 배포: Vercel (GitHub 연결, `main` push 시 배포 예정)
 
