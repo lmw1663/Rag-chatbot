@@ -33,3 +33,11 @@ order by 2, 1;
 - **수정**: Voyage 결제 수단을 등록해 표준 한도로 올렸고, 재실행으로 19개 모두 저장됐다. **코드는 아직 고치지 않았다.**
 - **남은 과제**: (1) 429 응답의 `Retry-After`를 따르고 없으면 더 길게 기다리기, (2) 바뀐 문서들의 청크를 모아 한 번에 임베딩해 요청 수 줄이기(19번 → 1~2번).
 - **교훈**: 재시도 로직은 상대 API의 한도 단위(초/분)에 맞춘다. 무료 등급처럼 한도가 낮은 환경에서 한 번 돌려 보면 이런 가정이 바로 드러난다.
+
+## 2026-10-18: 함수 기본 권한 회수가 효과 없음 (IN SCHEMA)
+
+- **문제**: 마이그레이션 `20261017201201_queries_uuid_and_default_privileges.sql`에서 `alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated`로 새 함수의 공개 실행 권한을 막았다고 판단했다. 적용 후 롤백 트랜잭션 안에서 시험용 함수를 만들어 보니 `proacl`이 `NULL`이었고 `has_function_privilege('anon', ..., 'execute')`가 `true`였다. 즉 새 함수는 여전히 누구나 실행할 수 있었다.
+- **원인**: PostgreSQL에서 스키마 단위(`IN SCHEMA`) 기본 권한은 전역 기본 권한에 **더해질** 뿐, 전역 기본값을 뺄 수 없다. 함수의 PUBLIC `EXECUTE`는 PostgreSQL의 전역 기본값이다. AI가 쓴 마이그레이션은 테이블과 같은 방식(`IN SCHEMA` 회수)을 함수에도 적용했고, 문법 오류 없이 적용돼 실패가 드러나지 않았다.
+- **수정**: 새 마이그레이션 `20261017201319_revoke_function_execute_from_public.sql`에서 `IN SCHEMA` 없이 `alter default privileges for role postgres revoke execute on functions from public`(전역). 다시 시험용 함수를 만들어 `proacl = {postgres=X/postgres}`, `anon`/`authenticated` 실행 불가를 확인했다. 시험은 `begin … rollback` 안에서 해 잔여 객체는 0이다.
+- **영향**: 이 기간에 새로 만든 함수는 없어서 노출된 것은 없었다. 기존 `replace_document_chunks`는 명시적 `revoke`가 있어 처음부터 안전했다.
+- **교훈**: "적용 성공"은 "의도대로 동작"이 아니다. 권한 변경은 새 객체를 실제로 만들어 `has_*_privilege`로 확인한다. 앞으로 새 함수는 `service_role`도 기본 실행 권한이 없으므로 `grant execute ... to service_role`을 반드시 쓴다.
