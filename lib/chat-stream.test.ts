@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PromptSource } from "./build-prompt";
-import { citedSources, readChatStream, type ChatStreamEvent } from "./chat-stream";
+import { citedSources, readChatStream, retrievedDocuments, type ChatStreamEvent } from "./chat-stream";
 
 // 문자열 조각들을 네트워크에서 받은 것처럼 바이트 스트림으로 만든다
 function streamOf(pieces: string[]): ReadableStream<Uint8Array> {
@@ -21,10 +21,10 @@ async function collect(stream: ReadableStream<Uint8Array>): Promise<ChatStreamEv
 
 describe("readChatStream", () => {
   it("한 줄이 여러 조각으로 잘려 와도 이어 붙여서 읽는다", async () => {
-    const events = await collect(streamOf(['{"type":"te', 'xt","text":"지각"}\n{"type":"do', 'ne","answered":true}\n']));
+    const events = await collect(streamOf(['{"type":"te', 'xt","text":"지각"}\n{"type":"do', 'ne","answered":true,"saved":true}\n']));
     expect(events).toEqual([
       { type: "text", text: "지각" },
-      { type: "done", answered: true },
+      { type: "done", answered: true, saved: true },
     ]);
   });
 
@@ -42,10 +42,10 @@ describe("readChatStream", () => {
   });
 
   it("마지막 줄에 줄바꿈이 없어도 읽고, 빈 줄은 건너뛴다", async () => {
-    const events = await collect(streamOf(['{"type":"text","text":"a"}\n\n', '{"type":"done","answered":false}']));
+    const events = await collect(streamOf(['{"type":"text","text":"a"}\n\n', '{"type":"done","answered":false,"saved":true}']));
     expect(events).toEqual([
       { type: "text", text: "a" },
-      { type: "done", answered: false },
+      { type: "done", answered: false, saved: true },
     ]);
   });
 });
@@ -66,5 +66,19 @@ describe("citedSources", () => {
   it("없는 번호나 인용이 없는 답변은 빈 배열이 된다", () => {
     expect(citedSources("매뉴얼에 없음 [9]", sources)).toEqual([]);
     expect(citedSources("매뉴얼에 없음", sources)).toEqual([]);
+  });
+});
+
+describe("retrievedDocuments", () => {
+  it("같은 문서의 청크는 한 번만, 검색 순위 순으로 돌려준다", () => {
+    const sources: PromptSource[] = [
+      { index: 1, chunkId: 101, slug: "attendance", title: "근태", heading: "지각" },
+      { index: 2, chunkId: 109, slug: "complaint-handling", title: "컴플레인 응대", heading: "기본 태도" },
+      { index: 3, chunkId: 102, slug: "attendance", title: "근태", heading: "결근" },
+    ];
+    expect(retrievedDocuments(sources)).toEqual([
+      { slug: "attendance", title: "근태" },
+      { slug: "complaint-handling", title: "컴플레인 응대" },
+    ]);
   });
 });

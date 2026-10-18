@@ -3,17 +3,17 @@
 // 응답은 NDJSON(줄마다 JSON 하나)이다. 출처 제목에 한글이 들어가 HTTP 헤더로 보낼 수 없어서 스트림 첫 줄로 보낸다.
 //   {"type":"meta","queryId":"...","sources":[...]}   ← 맨 처음 1번
 //   {"type":"text","text":"..."}                       ← 답변 조각, 여러 번
-//   {"type":"done","answered":true}                    ← 정상 종료 (이 시점에 queries 저장이 끝나 있다)
+//   {"type":"done","answered":true,"saved":true}       ← 정상 종료. saved: queries 저장 성공 여부
 //   {"type":"error","message":"..."}                   ← 도중 실패
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { buildPrompt, NO_ANSWER_MESSAGE, PROMPT_VERSION } from "@/lib/build-prompt";
-import type { ChatStreamEvent } from "@/lib/chat-stream";
+import { MAX_QUESTION_LENGTH, type ChatStreamEvent } from "@/lib/chat-stream";
 import { searchChunks, type SearchResult } from "@/lib/search";
 import { getSupabaseServer } from "@/lib/supabase-server";
 
 const CHAT_MODEL = "claude-haiku-5-5";
-const MAX_QUESTION_LENGTH = 500;
+const REFUSAL_MESSAGE = "이 질문에는 답할 수 없습니다.";
 
 const requestSchema = z.object(
   {
@@ -71,8 +71,9 @@ export async function POST(request: Request) {
       };
       send({ type: "meta", queryId, sources });
 
-      let answer = "";
+      let answer = ""; // 사용자 화면에 보인 텍스트와 똑같이 유지한다(queries.answer에 그대로 저장)
       let failed = false;
+      let refused = false;
       try {
         if (results.length === 0) {
           // 관련 청크가 하나도 없으면 LLM을 부르지 않는다
@@ -97,8 +98,11 @@ export async function POST(request: Request) {
           }
           const final = await claudeStream.finalMessage();
           if (final.stop_reason === "refusal") {
-            answer = "이 질문에는 답할 수 없습니다.";
-            send({ type: "text", text: answer });
+            // 이미 흘려보낸 앞부분 뒤에 안내를 덧붙인다. 덮어쓰면 화면과 로그의 답변이 달라진다
+            refused = true;
+            const notice = (answer ? "\n\n" : "") + REFUSAL_MESSAGE;
+            answer += notice;
+            send({ type: "text", text: notice });
           }
         }
       } catch (error) {
@@ -107,11 +111,19 @@ export async function POST(request: Request) {
         send({ type: "error", message: "답변 생성 중 오류가 발생했습니다" });
       }
 
-      // 실패한 답변도 "답 못 한 질문"으로 남긴다
-      const answered = !failed && !answer.trim().startsWith(NO_ANSWER_MESSAGE);
-      await saveQuery({ queryId, question, answer: failed ? null : answer, answered, results, latencyMs: Date.now() - startedAt });
+      // answered = false는 세 경우다. answer로 구분한다(CLAUDE.md "데이터 의미" 참고)
+      //   매뉴얼에 없음: answer = "매뉴얼에 없음" / 거절: answer = 거절 안내 포함 / 실패·중단: answer = null
+      const answered = !failed && !refused && !answer.trim().startsWith(NO_ANSWER_MESSAGE);
+      const saved = await saveQuery({
+        queryId,
+        question,
+        answer: failed ? null : answer,
+        answered,
+        results,
+        latencyMs: Date.now() - startedAt,
+      });
 
-      if (!failed) send({ type: "done", answered });
+      if (!failed) send({ type: "done", answered, saved });
       if (!closed) controller.close();
     },
   });
@@ -130,8 +142,9 @@ type SaveQueryInput = {
   latencyMs: number;
 };
 
-// 로그 저장이 실패해도 사용자는 이미 답변을 받았으므로 에러를 던지지 않고 기록만 한다
-async function saveQuery({ queryId, question, answer, answered, results, latencyMs }: SaveQueryInput) {
+// 로그 저장이 실패해도 사용자는 이미 답변을 받았으므로 에러를 던지지 않는다.
+// 대신 성공 여부를 돌려줘서, 저장되지 않은 답변에는 피드백 버튼을 띄우지 않게 한다(눌러도 404가 되므로)
+async function saveQuery({ queryId, question, answer, answered, results, latencyMs }: SaveQueryInput): Promise<boolean> {
   const { error } = await getSupabaseServer()
     .from("queries")
     .insert({
@@ -146,5 +159,9 @@ async function saveQuery({ queryId, question, answer, answered, results, latency
       // 재인제스트하면 청크 id가 바뀌므로 id 대신 slug와 헤딩을 스냅샷으로 남긴다
       retrieved_chunks: results.map((r) => ({ slug: r.slug, heading: r.heading, similarity: r.similarity })),
     });
-  if (error) console.error("[chat] queries 저장 실패", error);
+  if (error) {
+    console.error("[chat] queries 저장 실패", error);
+    return false;
+  }
+  return true;
 }

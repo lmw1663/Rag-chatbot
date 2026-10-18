@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { readChatStream } from "@/lib/chat-stream";
+import { MAX_QUESTION_LENGTH, readChatStream } from "@/lib/chat-stream";
 import { ChatMessage, type ChatTurn } from "./ChatMessage";
-
-const MAX_QUESTION_LENGTH = 500; // 서버(app/api/chat/route.ts)의 zod 검증과 같은 값. 최종 검증은 서버가 한다
 
 export default function Home() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -37,6 +35,7 @@ export default function Home() {
         queryId: null,
         status: "streaming",
         answered: null,
+        saved: false,
         errorMessage: null,
         rating: null,
         feedbackError: null,
@@ -70,7 +69,7 @@ export default function Home() {
             updateTurn(id, (turn) => ({ answer: turn.answer + streamEvent.text }));
             break;
           case "done":
-            updateTurn(id, () => ({ status: "done", answered: streamEvent.answered }));
+            updateTurn(id, () => ({ status: "done", answered: streamEvent.answered, saved: streamEvent.saved }));
             break;
           case "error":
             updateTurn(id, () => ({ status: "error", errorMessage: streamEvent.message }));
