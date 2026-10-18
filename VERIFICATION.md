@@ -41,3 +41,11 @@ order by 2, 1;
 - **수정**: 새 마이그레이션 `20261017201319_revoke_function_execute_from_public.sql`에서 `IN SCHEMA` 없이 `alter default privileges for role postgres revoke execute on functions from public`(전역). 다시 시험용 함수를 만들어 `proacl = {postgres=X/postgres}`, `anon`/`authenticated` 실행 불가를 확인했다. 시험은 `begin … rollback` 안에서 해 잔여 객체는 0이다.
 - **영향**: 이 기간에 새로 만든 함수는 없어서 노출된 것은 없었다. 기존 `replace_document_chunks`는 명시적 `revoke`가 있어 처음부터 안전했다.
 - **교훈**: "적용 성공"은 "의도대로 동작"이 아니다. 권한 변경은 새 객체를 실제로 만들어 `has_*_privilege`로 확인한다. 앞으로 새 함수는 `service_role`도 기본 실행 권한이 없으므로 `grant execute ... to service_role`을 반드시 쓴다.
+
+## 2026-10-18: 사용자가 연결을 끊으면 질의 로그가 저장되지 않음
+
+- **문제**: `/api/chat`(`app/api/chat/route.ts`)의 첫 버전은 `ReadableStream` 안에서 `controller.enqueue()`로 답변 조각을 보낸 뒤, 끝에서 `queries`에 로그를 저장했다. 답변 도중 사용자가 창을 닫으면 저장이 실행되지 않는 구조였다.
+- **원인**: 연결이 끊긴 스트림에 `enqueue()`하면 에러가 난다. AI가 쓴 코드는 이 에러를 `catch`에서 받은 뒤 다시 `send()`로 에러 이벤트를 보내려 했고, 거기서 또 에러가 나 함수가 빠져나갔다. 그래서 그 아래의 `saveQuery()`와 `controller.close()`가 실행되지 않았다. "스트림은 끝까지 열려 있다"고 가정한 것이 원인이다.
+- **영향**: 실행 전 코드 검토에서 발견해 실제로 빠진 로그는 없다. 그대로 두었다면 답변 도중 나간 질문이 "답 못 한 질문" 집계와 지연 시간 기록에서 빠졌을 것이다.
+- **수정**: `send()`가 `enqueue()` 에러를 잡아 `closed` 플래그만 세우고 이후 전송을 건너뛰게 했다. `controller.close()`도 `closed`가 아닐 때만 호출한다. 이제 연결이 끊겨도 `saveQuery()`까지 실행된다. Claude 요청에는 `request.signal`을 넘겨, 연결이 끊기면 생성도 멈추고 그 질문은 실패(`answered = false`)로 기록된다.
+- **교훈**: 스트리밍 응답에서는 "상대가 중간에 사라지는 경우"를 정상 흐름으로 다룬다. 응답 전송과 서버 쪽 마무리(로그 저장)를 분리해, 전송 실패가 마무리를 막지 않게 한다.

@@ -41,14 +41,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 검증: zod(입력), Vitest(테스트)
 - 배포: Vercel
 
-### 폴더 구조 (계획, 구현하며 실제 경로로 갱신)
+### 폴더 구조 (구현하며 실제 경로로 갱신)
 ```
-app/              페이지와 API 라우트 (/api/chat, /api/feedback, /admin)
-lib/              청커, 임베딩, 검색, 프롬프트 조립, Supabase 클라이언트
-scripts/          ingest, eval 스크립트
-supabase/migrations/  스키마, RLS 정책, 유사도 검색 함수
-manuals/          매뉴얼 마크다운 원본
-docs/             PLAN.md
+app/
+  page.tsx              채팅 화면 (클라이언트 컴포넌트)
+  ChatMessage.tsx       질문·답변·출처·👍/👎 한 쌍
+  api/chat/route.ts     질문 → 검색 → 프롬프트 → Claude 스트리밍(NDJSON) → queries 저장
+  api/feedback/route.ts 👍/👎 저장 (query_id 기준 upsert)
+  admin/                관리자 페이지 (4일차 예정)
+lib/
+  chunk-markdown.ts     헤딩 기준 청커
+  embed.ts              Voyage 임베딩
+  search.ts             질문 임베딩 + search_chunks 호출
+  build-prompt.ts       근거 번호 붙이기, 시스템 프롬프트, PROMPT_VERSION
+  chat-stream.ts        스트림 이벤트 타입과 NDJSON 읽기 (서버·브라우저 공용, 비밀 값 import 금지)
+  supabase-server.ts    서버 전용 Supabase 클라이언트
+scripts/                ingest (eval은 3일차 예정)
+supabase/migrations/    스키마, RLS·권한, 문서 교체 함수, 혼합 검색 함수
+manuals/                매뉴얼 마크다운 원본 (읽기 전용 444)
+docs/                   PLAN.md
 ```
 
 ### 요청 흐름
@@ -134,7 +145,11 @@ flowchart TD
 - `feedback`: 답변별 👍/👎
 
 ### "근거 없음" 판단 기준
-`TODO`: 유사도 임계값과 상위 k개 값 (3일차 평가로 조정, 바꾸면 여기에 기록)
+현재 값 (2일차, 3일차 평가로 조정하고 바꾸면 여기에 기록):
+- 검색: `search_chunks` (`supabase/migrations/20261018121212_hybrid_search_chunks.sql`). 벡터 검색과 키워드 검색(`pg_trgm` `word_similarity`)에서 후보를 20개씩 뽑아 RRF(k=60)로 합치고 상위 5개를 쓴다.
+- 임계값은 벡터 유사도 바닥값 0.1뿐이다. 명백히 무관한 청크만 거른다. 검색 결과가 0행이면 LLM을 부르지 않고 "매뉴얼에 없음"으로 답한다.
+- 최종 판단은 프롬프트가 한다. 모델이 근거가 없다고 보면 `NO_ANSWER_MESSAGE`("매뉴얼에 없음")만 출력하고, 답변이 이 문장으로 시작하면 `queries.answered = false`로 기록한다.
+- 임계값만으로 판단하지 않는 이유: 1일차 실측에서 매뉴얼에 없는 질문("주차장 몇 대")의 1위 유사도(0.318)가 답이 있는 질문의 정답 유사도(0.267~0.287)보다 높았다. 혼합 검색을 적용한 뒤에도 0행이 되는 경우는 거의 없다.
 
 ---
 
