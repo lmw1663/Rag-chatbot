@@ -48,7 +48,7 @@ app/
   ChatMessage.tsx       질문·답변·출처·👍/👎 한 쌍
   api/chat/route.ts     질문 → 검색 → 프롬프트 → Claude 스트리밍(NDJSON) → queries 저장
   api/feedback/route.ts 👍/👎 저장 (query_id 기준 upsert)
-  admin/                관리자 페이지 (4일차 예정)
+  admin/page.tsx        관리자 페이지 (👎 많은 질문, 답 못 한 질문 TOP 10, 요약 지표)
 lib/
   chunk-markdown.ts     헤딩 기준 청커
   embed.ts              Voyage 임베딩
@@ -56,6 +56,9 @@ lib/
   build-prompt.ts       근거 번호 붙이기, 시스템 프롬프트(v1/v2), PROMPT_VERSION
   generate-answer.ts    Claude 답변 생성과 answered 판단 (/api/chat과 평가가 같이 씀)
   rate-limit.ts         요청 횟수 제한 (IP별 메모리 + 전체 사용량 DB)
+  admin-auth.ts         /admin Basic 인증 검사 (proxy.ts와 admin.ts가 같이 씀, 환경 변수 없으면 항상 막음)
+  admin.ts              관리자 데이터 접근: 인증 재확인 후 집계 SQL 함수 호출
+proxy.ts                /admin 사전 인증 (Next 16에서 middleware가 proxy로 바뀜)
   chat-stream.ts        스트림 이벤트 타입과 NDJSON 읽기 (서버·브라우저 공용, 비밀 값 import 금지)
   supabase-server.ts    서버 전용 Supabase 클라이언트
 scripts/
@@ -63,7 +66,7 @@ scripts/
   eval.ts               평가 (검색·답변 여부·답변 내용 채점)
   eval/cases.json       평가셋 57문항 (dev 37 + holdout 20)
   eval/results/         평가 결과 (<시각>-<모델>-<프롬프트>-k<검색 청크 수>d<확장 문서 수>.json)
-supabase/migrations/    스키마, RLS·권한, 문서 교체 함수, 혼합 검색 함수
+supabase/migrations/    스키마, RLS·권한, 문서 교체 함수, 혼합 검색·문서 확장 함수, 관리자 집계 함수
 manuals/                매뉴얼 마크다운 원본 (읽기 전용 444)
 docs/                   PLAN.md
 ```
@@ -107,7 +110,8 @@ flowchart TD
 - Supabase 테이블은 RLS를 켜고, 정책을 마이그레이션 파일로 관리한다.
 - DB 변경은 SQL 마이그레이션으로 남긴다.
 - 같은 문서를 다시 인제스트하면 기존 청크를 교체한다(문서 단위 upsert). 청크가 중복으로 쌓이면 안 된다.
-- 관리자 페이지 집계는 직접 쓴 SQL로 한다.
+- 관리자 페이지 집계는 직접 쓴 SQL로 한다(`20261022035820_admin_dashboard_functions.sql`). 같은 질문은 `normalize_question`(공백 정리 + 소문자)으로 묶는다.
+- 관리자 페이지는 `ADMIN_USERNAME`, `ADMIN_PASSWORD`(서버 전용)로 Basic 인증한다. proxy는 사전 확인이고, 데이터를 읽는 `lib/admin.ts`에서 다시 확인한다.
 - 단어 불일치 대응: 매뉴얼에는 표준 용어를 쓰고 다른 표현을 괄호로 병기한다(예: "튀김기(프라이어)"). 병기는 문서마다 본문에서 처음 나올 때 한 번만 하고, 헤딩과 frontmatter에는 넣지 않는다. 3일차 평가에서 다른 표현으로 묻는 질문의 점수가 낮으면 질문 변환(임베딩 전 용어집 적용)을 추가한다.
 
 ### 공부용 노트
