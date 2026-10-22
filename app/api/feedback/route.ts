@@ -1,5 +1,6 @@
 // POST /api/feedback: 답변 하나에 👍(1) / 👎(-1)을 남긴다. 다시 누르면 기존 평가를 바꾼다(query_id 기준 upsert).
 import { z } from "zod";
+import { checkIpRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
 import { getSupabaseServer } from "@/lib/supabase-server";
 
 const requestSchema = z.object(
@@ -20,6 +21,10 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? "잘못된 요청입니다" }, { status: 400 });
   }
   const { queryId, rating } = parsed.data;
+
+  // 피드백은 API 비용이 없어 전체 상한은 두지 않고, IP별 제한만 둔다(DB 쓰기 반복 방지)
+  const ipLimit = checkIpRateLimit(`feedback:${clientIp(request)}`); // API마다 따로 센다
+  if (!ipLimit.ok) return tooManyRequests(ipLimit.retryAfterSec);
 
   const { error } = await getSupabaseServer()
     .from("feedback")

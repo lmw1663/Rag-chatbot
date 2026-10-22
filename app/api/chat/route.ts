@@ -9,6 +9,7 @@ import { z } from "zod";
 import { buildPrompt, PROMPT_VERSION } from "@/lib/build-prompt";
 import { MAX_QUESTION_LENGTH, type ChatStreamEvent } from "@/lib/chat-stream";
 import { generateAnswer, type GeneratedAnswer } from "@/lib/generate-answer";
+import { checkGlobalRateLimit, checkIpRateLimit, clientIp, tooManyRequests } from "@/lib/rate-limit";
 import { searchChunks, type SearchResult } from "@/lib/search";
 import { getSupabaseServer } from "@/lib/supabase-server";
 
@@ -32,6 +33,12 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error.issues[0]?.message ?? "잘못된 요청입니다" }, { status: 400 });
   }
   const { question } = parsed.data;
+
+  // 요청 횟수 제한은 검색(Voyage 임베딩)보다 먼저 한다. 검색부터 비용이 든다
+  const ipLimit = checkIpRateLimit(`chat:${clientIp(request)}`); // API마다 따로 센다
+  if (!ipLimit.ok) return tooManyRequests(ipLimit.retryAfterSec);
+  const globalLimit = await checkGlobalRateLimit();
+  if (!globalLimit.ok) return tooManyRequests(globalLimit.retryAfterSec);
 
   // 검색 실패(임베딩 API, DB 오류)는 스트림을 열기 전이라 500으로 바로 돌려준다
   let results: SearchResult[];
