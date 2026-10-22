@@ -111,10 +111,19 @@ async function main() {
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
     // 파일 이름에 검색 설정도 넣는다: k = 검색 청크 수, d = 청크 전체를 넣는 상위 문서 수
     const retrieval = { matchCount: DEFAULT_MATCH_COUNT, expandDocCount: DEFAULT_EXPAND_DOC_COUNT };
-    const file = path.join(outDir, `${stamp}-${modelKey}-${promptVersion}-k${retrieval.matchCount}d${retrieval.expandDocCount}.json`);
-    const run = { date: new Date().toISOString(), model, promptVersion, judgeModel: JUDGE_MODEL, retrieval };
+    // API 오류(크레딧 부족, 요청 한도 등)로 실패한 문항이 있으면 그 실행은 측정값이 아니다. 0점이 섞여 점수가 낮게 나온다.
+    // 기록은 남기되(원인 확인용) 파일 이름과 run.invalid로 표시해, 비교에 잘못 쓰이지 않게 한다
+    const errorCount = results.filter((r) => r.error).length;
+    const invalid = errorCount > 0;
+    const name = `${stamp}-${modelKey}-${promptVersion}-k${retrieval.matchCount}d${retrieval.expandDocCount}${invalid ? "-invalid" : ""}.json`;
+    const file = path.join(outDir, name);
+    const run = { date: new Date().toISOString(), model, promptVersion, judgeModel: JUDGE_MODEL, retrieval, invalid };
     await writeFile(file, JSON.stringify({ run, summary: summarizeBySplit(results), cases: results }, null, 2) + "\n");
     console.log(`\n결과 저장: ${path.relative(process.cwd(), file)}`);
+    if (invalid) {
+      console.error(`! 실패한 문항이 ${errorCount}개 있어 이 실행은 무효(invalid)로 표시했습니다. 원인을 고친 뒤 다시 실행하세요.`);
+      process.exitCode = 1;
+    }
   }
 }
 
@@ -232,12 +241,12 @@ function summarize(results: CaseResult[]) {
   const answeredExpected = results.filter((r) => r.type !== "unanswerable" && r.type !== "injection" && r.answered);
   const latencies = results.map((r) => r.latencyMs).sort((a, b) => a - b);
   return {
-    score: round(results.reduce((sum, r) => sum + r.score, 0) / results.length),
+    score: ratio(results.reduce((sum, r) => sum + r.score, 0), results.length),
     byType: Object.fromEntries(Object.entries(byType).map(([type, v]) => [type, { n: v.n, score: round(v.score / v.n) }])),
-    retrievalHitRate: round(withSlugs.filter((r) => r.retrievalHit).length / withSlugs.length),
-    chunkHitRate: round(withChunks.filter((r) => r.chunkHit).length / withChunks.length),
-    answeredAccuracy: round(results.filter((r) => r.answeredOk).length / results.length),
-    citationRate: answeredExpected.length ? round(answeredExpected.filter((r) => r.hasCitation).length / answeredExpected.length) : null,
+    retrievalHitRate: ratio(withSlugs.filter((r) => r.retrievalHit).length, withSlugs.length),
+    chunkHitRate: ratio(withChunks.filter((r) => r.chunkHit).length, withChunks.length),
+    answeredAccuracy: ratio(results.filter((r) => r.answeredOk).length, results.length),
+    citationRate: ratio(answeredExpected.filter((r) => r.hasCitation).length, answeredExpected.length),
     unsupportedClaims: results.filter((r) => r.judgement?.unsupported_claim).length,
     errors: results.filter((r) => r.error).length,
     latencyMs: { median: latencies[Math.floor(latencies.length / 2)], max: latencies[latencies.length - 1] },
@@ -298,6 +307,11 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
 function argValue(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i === -1 ? undefined : process.argv[i + 1];
+}
+
+// 분모가 0이면(해당 문항이 없거나 전부 실패) null. 0으로 나눠 NaN이 찍히지 않게 한다
+function ratio(numerator: number, denominator: number): number | null {
+  return denominator === 0 ? null : round(numerator / denominator);
 }
 
 function round(value: number, digits = 3): number {
