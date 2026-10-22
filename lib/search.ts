@@ -27,15 +27,23 @@ export type SearchChunksRow = {
 };
 
 export const DEFAULT_MATCH_COUNT = 5;
+// 상위 몇 개 문서의 청크를 전부 넣을지. 0이면 검색된 청크만 쓴다(문서 확장 전과 같음)
+// 3일차 평가: 정답 문서는 찾았는데 필요한 청크가 13위 이하로 밀린 문항이 있어 문서 단위로 넓혔다
+export const DEFAULT_EXPAND_DOC_COUNT = 2;
 
 // 결과가 빈 배열이면 매뉴얼에 관련 청크가 없다는 뜻이다. "매뉴얼에 없음" 처리는 호출하는 쪽에서 한다.
-export async function searchChunks(question: string, matchCount = DEFAULT_MATCH_COUNT): Promise<SearchResult[]> {
+// 순서는 문서 순위 → 문서 안의 원래 순서다(search_chunks_expanded 참고). 점수 순이 아니다.
+export async function searchChunks(
+  question: string,
+  { matchCount = DEFAULT_MATCH_COUNT, expandDocCount = DEFAULT_EXPAND_DOC_COUNT } = {},
+): Promise<SearchResult[]> {
   const embedding = await embedQuery(question);
 
-  const { data, error } = await getSupabaseServer().rpc("search_chunks", {
+  const { data, error } = await getSupabaseServer().rpc("search_chunks_expanded", {
     p_query_text: question,
     p_query_embedding: embedding,
     p_match_count: matchCount,
+    p_doc_count: expandDocCount,
   });
   if (error) throw new Error(`청크 검색 실패: ${error.message}`);
 
