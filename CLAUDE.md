@@ -132,7 +132,8 @@ flowchart TD
 - 평가: `npm run eval` (Haiku, 앱의 프롬프트 버전), `npm run eval -- --model sonnet`, `npm run eval -- --prompt v2`, `npm run eval -- --only a01,h15` (일부 문항, 결과 파일 저장 안 함)
   - 한 번에 약 $0.5 (57문항, 채점 Opus 5.5 포함). API 오류로 실패한 문항이 있으면 결과 파일 이름에 `-invalid`가 붙고 비교에 쓰지 않는다. 실행마다 점수가 0.03~0.06 흔들리므로 비교는 2회 이상 평균으로 한다.
   - holdout 문항은 개선을 설계할 때 보지 않은 문항이다. 결과를 보고 holdout 문항이나 그 내용을 프롬프트에 맞춰 고치지 않는다.
-- 배포: Vercel (GitHub 연결, `main` push 시 배포 예정)
+- 배포: Vercel 프로젝트 `ragchatbotminwoo` (https://ragchatbotminwoo.vercel.app). GitHub `main` push 시 자동 배포. 환경 변수 6개(`.env.example`의 키)는 Vercel 대시보드에 Production으로 넣고, 바꾸면 Redeploy한다.
+  - 함수 리전은 `vercel.json`의 `regions: ["icn1"]`(서울). Supabase가 서울(ap-northeast-2)이라 요청마다 DB를 여러 번 오가는 왕복을 줄인다.
 
 ---
 

@@ -2,7 +2,7 @@
 
 패스트푸드 매장 직원이 업무 중에 생기는 질문("튀김기 기름은 언제 갈아요?", "손님이 환불해 달라고 하면?")을 물으면, 매장 업무 매뉴얼을 근거로 출처와 함께 답하는 웹 챗봇입니다. 매뉴얼에 없는 내용은 지어내지 않고 "매뉴얼에 없음"이라고 답합니다.
 
-- 데모: `TODO: 배포 후 URL`
+- 데모: https://ragchatbotminwoo.vercel.app
 - 데모 GIF: `TODO`
 
 매뉴얼 19개는 매장 근무 경험을 바탕으로 새로 쓴 일반 매장 기준입니다. 실제 브랜드명이나 사내 매뉴얼 내용은 들어 있지 않습니다.
@@ -20,7 +20,7 @@
 
 | 영역 | 선택 | 이유 |
 |---|---|---|
-| 웹 | Next.js 16 (App Router), React 19, TypeScript, Tailwind v4 | 화면과 API를 한 프로젝트에서 만들고 Vercel에 바로 배포 |
+| 웹 | Next.js 16 (App Router), React 19, TypeScript, Tailwind v4 | 화면과 API를 한 프로젝트에서 만들고 Vercel에 바로 배포. 함수는 DB와 같은 서울 리전(`icn1`)에서 실행 |
 | DB / 벡터 검색 | Supabase (Postgres + pgvector, pg_trgm) | 로그·피드백과 벡터를 한 DB에 두고, 검색과 집계를 SQL로 직접 작성 |
 | LLM | Claude Haiku 5.5 (Anthropic SDK) | Sonnet 5.5와 평가 점수가 같고, 더 빠르고 답변 비용이 약 1/14 (아래 평가) |
 | 임베딩 | Voyage `voyage-4` (1024차원) | 문서는 `document`, 질문은 `query`로 구분해 임베딩 |
