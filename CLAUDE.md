@@ -55,12 +55,13 @@ lib/
   search.ts             질문 임베딩 + search_chunks_expanded 호출
   build-prompt.ts       근거 번호 붙이기, 시스템 프롬프트(v1/v2), PROMPT_VERSION
   generate-answer.ts    Claude 답변 생성과 answered 판단 (/api/chat과 평가가 같이 씀)
+  rate-limit.ts         요청 횟수 제한 (IP별 메모리 + 전체 사용량 DB)
   chat-stream.ts        스트림 이벤트 타입과 NDJSON 읽기 (서버·브라우저 공용, 비밀 값 import 금지)
   supabase-server.ts    서버 전용 Supabase 클라이언트
 scripts/
   ingest.ts             매뉴얼 → 청크 → 임베딩 → DB
   eval.ts               평가 (검색·답변 여부·답변 내용 채점)
-  eval/cases.json       평가셋 52문항 (dev 32 + holdout 20)
+  eval/cases.json       평가셋 57문항 (dev 37 + holdout 20)
   eval/results/         평가 결과 (<시각>-<모델>-<프롬프트>-k<검색 청크 수>d<확장 문서 수>.json)
 supabase/migrations/    스키마, RLS·권한, 문서 교체 함수, 혼합 검색 함수
 manuals/                매뉴얼 마크다운 원본 (읽기 전용 444)
@@ -96,12 +97,13 @@ flowchart TD
   end
 
   subgraph Eval["평가 (scripts/eval)"]
-    T[평가셋 52문항<br/>dev 32 + holdout 20] --> R[프롬프트 v1/v2,<br/>Haiku/Sonnet 비교]
+    T[평가셋 57문항<br/>dev 37 + holdout 20] --> R[프롬프트 v1/v2,<br/>Haiku/Sonnet 비교]
   end
 ```
 
 ### 설계 규칙
 - 모든 API 입력은 zod로 검증한다.
+- 요청 횟수 제한(`lib/rate-limit.ts`): IP별 1분 10회(질문·피드백 따로, 메모리라 최선 노력), 질문은 전체 1분 30회·24시간 500회(`queries` 기준, 조회 실패 시 통과). 순서는 입력 검증 → 제한 → 검색이다(검색부터 비용이 든다).
 - Supabase 테이블은 RLS를 켜고, 정책을 마이그레이션 파일로 관리한다.
 - DB 변경은 SQL 마이그레이션으로 남긴다.
 - 같은 문서를 다시 인제스트하면 기존 청크를 교체한다(문서 단위 upsert). 청크가 중복으로 쌓이면 안 된다.
@@ -124,7 +126,7 @@ flowchart TD
 - 단일 테스트: `npx vitest run lib/chunk-markdown.test.ts`, 이름으로 거르기: `npx vitest run -t "코드 블록"`
 - 인제스트: `npm run ingest` (바뀐 문서만), `npm run ingest -- --force` (청커를 바꿨을 때 전체 재임베딩). 매뉴얼은 frontmatter에 `title`, `category`를 적는다.
 - 평가: `npm run eval` (Haiku, 앱의 프롬프트 버전), `npm run eval -- --model sonnet`, `npm run eval -- --prompt v2`, `npm run eval -- --only a01,h15` (일부 문항, 결과 파일 저장 안 함)
-  - 한 번에 약 $0.5 (52문항, 채점 Opus 5.5 포함). 실행마다 점수가 0.03~0.06 흔들리므로 비교는 2회 이상 평균으로 한다.
+  - 한 번에 약 $0.5 (57문항, 채점 Opus 5.5 포함). API 오류로 실패한 문항이 있으면 결과 파일 이름에 `-invalid`가 붙고 비교에 쓰지 않는다. 실행마다 점수가 0.03~0.06 흔들리므로 비교는 2회 이상 평균으로 한다.
   - holdout 문항은 개선을 설계할 때 보지 않은 문항이다. 결과를 보고 holdout 문항이나 그 내용을 프롬프트에 맞춰 고치지 않는다.
 - 배포: Vercel (GitHub 연결, `main` push 시 배포 예정)
 
@@ -160,6 +162,7 @@ flowchart TD
 - 임계값은 벡터 유사도 바닥값 0.1뿐이고, 벡터·키워드 두 검색의 후보 모두에 적용한다(`20261018124220_search_chunks_keyword_floor.sql`). 명백히 무관한 청크만 거른다. 검색 결과가 0행이면 LLM을 부르지 않고 "매뉴얼에 없음"으로 답한다.
 - 최종 판단은 프롬프트가 한다. 모델이 근거가 없다고 보면 `NO_ANSWER_MESSAGE`("매뉴얼에 없음")만 출력한다.
 - `answered` 판단(`lib/generate-answer.ts`의 `isAnswered`): 거절이 아니고, "매뉴얼에 없음"으로 시작하지 않고, 발췌 번호 `[n]`을 하나 이상 인용했으면 답한 것으로 본다. 고정 문장만 보면 "매뉴얼 발췌에 ~ 내용은 없습니다" 같은 거절이 답한 것으로 기록됐다(3일차 평가).
+- 모델: Haiku 5.5를 쓴다. Sonnet 5.5와 2회씩 비교해 점수는 같고(둘 다 1.0), Sonnet이 지연 중앙값 약 0.5초 느리고 답변 비용은 약 14배였다.
 - 프롬프트: v1을 쓴다. v2(질문한 상황의 규칙만 쓰기, 핵심 답 먼저)는 3번 평가해 한 번도 v1보다 높지 않아 채택하지 않았다.
 - 임계값만으로 판단하지 않는 이유: 1일차 실측에서 매뉴얼에 없는 질문("주차장 몇 대")의 1위 유사도(0.318)가 답이 있는 질문의 정답 유사도(0.267~0.287)보다 높았다. 혼합 검색을 적용한 뒤에도 0행이 되는 경우는 거의 없다.
 
