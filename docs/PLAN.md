@@ -7,38 +7,39 @@ RAG 챗봇 포트폴리오 4일 개발 계획
 • 스택: Next.js + TypeScript, Supabase(Postgres + pgvector), Claude API, Voyage 또는 OpenAI 임베딩, zod, Vitest, Vercel
 시작 전 준비
 1일차 전에 30분 안에 끝낸다.
-[ ] GitHub 레포 생성 (public)
-[ ] Supabase 새 프로젝트 만들고 pgvector 확장 켜기
-[ ] API 키 발급: Anthropic, 임베딩(Voyage 또는 OpenAI)
-[ ] Vercel 계정을 GitHub에 연결
+[x] GitHub 레포 생성 (public)
+[x] Supabase 새 프로젝트 만들고 pgvector 확장 켜기
+[x] API 키 발급: Anthropic, 임베딩(Voyage 또는 OpenAI)
+[x] Vercel 계정을 GitHub에 연결
 4일 일정
 1일차: 지식베이스 + 데이터 파이프라인
-[ ] 매뉴얼 15~20개 작성: 경험을 bullet로 적고, AI로 마크다운 구조화, 본인 검수 ("현업 지식 구조화" 사례)
-[ ] Next.js + TypeScript 프로젝트 셋업
-[ ] DB 스키마 4개 테이블: documents, chunks, queries, feedback
-[ ] 인제스트 스크립트: 청킹 → 임베딩 → 저장
-[ ] 청커 단위테스트
+[x] 매뉴얼 15~20개 작성: 경험을 bullet로 적고, AI로 마크다운 구조화, 본인 검수 ("현업 지식 구조화" 사례)
+[x] Next.js + TypeScript 프로젝트 셋업
+[x] DB 스키마 4개 테이블: documents, chunks, queries, feedback
+[x] 인제스트 스크립트: 청킹 → 임베딩 → 저장
+[x] 청커 단위테스트
 끝 기준: DB에 청크와 벡터가 들어가 있고, 테이블 설계 이유를 말할 수 있음.
 2일차: RAG 핵심 + UI
-[ ] 유사도 검색 SQL 함수
-[ ] /api/chat 스트리밍 응답
-[ ] 근거 없으면 "매뉴얼에 없음" 처리
-[ ] 채팅 UI, 출처 표시, 👍/👎 버튼, 질의 로그 저장
-[ ] zod 입력 검증
+[x] 유사도 검색 SQL 함수
+[x] /api/chat 스트리밍 응답
+[x] 근거 없으면 "매뉴얼에 없음" 처리
+[x] 채팅 UI, 출처 표시, 👍/👎 버튼, 질의 로그 저장
+[x] zod 입력 검증
 끝 기준: 로컬에서 질문하면 출처 달린 답이 나오고, 요청 흐름을 처음부터 끝까지 설명할 수 있음.
 3일차: 품질 + 보안
-[ ] 평가셋 30문항 + 평가 스크립트
-[ ] 프롬프트 v1 → v2 개선, 점수 변화 기록
-[ ] 같은 스크립트로 Haiku vs Sonnet 비교 (추가 1~2시간)
-[ ] 보안 점검: RLS, 키 노출 여부, rate limit, 프롬프트 인젝션, 재업로드 시 청크 중복
-[ ] 발견한 문제를 VERIFICATION.md에 기록
+[x] 평가셋 30문항 + 평가 스크립트 (실제: 57문항 = dev 37 + 개선 설계에 쓰지 않은 holdout 20, 검색·답변 여부·답변 내용을 따로 채점)
+[x] 프롬프트 v1 → v2 개선, 점수 변화 기록 (v2는 3회 평가에서 v1보다 높지 않아 채택 안 함. 대신 검색 문서 확장으로 청크 적중률 0.875 → 1.0)
+[x] 같은 스크립트로 Haiku vs Sonnet 비교 (추가 1~2시간) (점수 동일, Sonnet이 느리고 답변 비용 약 14배 → Haiku 유지)
+[x] 보안 점검: RLS, 키 노출 여부, rate limit, 프롬프트 인젝션, 재업로드 시 청크 중복
+[x] 발견한 문제를 VERIFICATION.md에 기록
 끝 기준: 평가 결과표가 있고, AI 코드에서 잡은 문제가 3개 이상.
 4일차: 배포 + 마무리
-[ ] Vercel 배포
-[ ] 관리자 페이지: 👎 많은 질문, 답 못 한 질문 TOP N을 직접 쓴 SQL로
-[ ] README 작성, 데모 GIF 촬영
-[ ] 전 동료 크루들에게 링크 공유
+[x] Vercel 배포
+[x] 관리자 페이지: 👎 많은 질문, 답 못 한 질문 TOP N을 직접 쓴 SQL로
+[x] README 작성, 데모 GIF 촬영 (GIF 대신 배포 화면 스크린샷)
+[ ] 전 동료 크루들에게 링크 공유 (하지 않기로 함)
 끝 기준: 공개 URL과 README 완성.
+결과: https://ragchatbotminwoo.vercel.app 배포, README 완성 (2026-10-22)
 뺀 것과 이유
 • Docker, MCP 서버: 공고 기여도 대비 시간이 커서 제외했다. 지원 후에도 레포는 계속 업데이트할 수 있으니, 면접 전까지 추가하면 "지원 후에도 개선 중"이라는 이야기가 된다.
 • 실사용 피드백: 4일 안에 많이 모이긴 어렵다. 링크만 먼저 뿌려두고, 들어온 피드백 반영 내역은 면접 전에 README에 추가한다.
