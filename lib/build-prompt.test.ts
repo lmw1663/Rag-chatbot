@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, NO_ANSWER_MESSAGE } from "./build-prompt";
+import { buildPrompt, NO_ANSWER_MESSAGE, PROMPT_VERSIONS } from "./build-prompt";
 import type { SearchResult } from "./search";
 
 function result(overrides: Partial<SearchResult>): SearchResult {
@@ -49,8 +49,15 @@ describe("buildPrompt", () => {
     expect(userMessage.match(/<\/excerpt>/g)).toHaveLength(1);
   });
 
-  it("시스템 프롬프트에 근거 없음 문장을 그대로 넣는다", () => {
-    const { system } = buildPrompt("q", [result({})]);
+  it.each(PROMPT_VERSIONS)("%s 시스템 프롬프트에 근거 없음 문장을 그대로 넣는다", (version) => {
+    const { system } = buildPrompt("q", [result({})], version);
     expect(system).toContain(`"${NO_ANSWER_MESSAGE}"이라고만 답합니다`);
+  });
+
+  it("버전마다 다른 시스템 프롬프트를 쓰고, 발췌와 질문 부분은 같다", () => {
+    const v1 = buildPrompt("q", [result({})], "v1");
+    const v2 = buildPrompt("q", [result({})], "v2");
+    expect(v1.system).not.toBe(v2.system);
+    expect(v1.userMessage).toBe(v2.userMessage);
   });
 });
